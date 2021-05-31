@@ -6,13 +6,17 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
+import reactor.util.function.Tuple2;
 
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 public class FluxTest {
@@ -138,5 +142,114 @@ public class FluxTest {
 
     }
 
+    @Test
+    void fluxTest7merge() {
 
+        Flux<String> flux1 = Flux.just("A", "B", "C");
+        Flux<String> flux2 = Flux.just("X", "Y", "Z");
+
+        Flux<String> mergedFlux = Flux.merge(flux1, flux2);
+
+        StepVerifier.create(mergedFlux)
+                .expectNext("A", "B", "C", "X", "Y", "Z")
+                .verifyComplete();
+
+    }
+
+
+    @Test
+    void fluxTest7mergeWithDelay() {
+
+        Flux<String> flux1 = Flux.just("A", "B", "C").delayElements(Duration.ofSeconds(1));
+        Flux<String> flux2 = Flux.just("X", "Y", "Z").delayElements(Duration.ofSeconds(1));
+
+        Flux<String> mergedFlux = Flux.merge(flux1, flux2).log();
+
+        StepVerifier.create(mergedFlux)
+                .expectNextCount(6)
+                .verifyComplete();
+
+    }
+
+    @Test
+    void fluxTest8zip() {
+
+        Flux<String> flux1 = Flux.just("A", "B", "C").delayElements(Duration.ofSeconds(1));
+        Flux<String> flux2 = Flux.just("X", "Y", "Z").delayElements(Duration.ofSeconds(1));
+
+        Flux<String> zippedFlux = Flux.zip(flux1, flux2).log().map(t -> t.getT1() + t.getT2());
+
+        StepVerifier.create(zippedFlux).expectNext("AX", "BY", "CZ")
+                .verifyComplete();
+
+    }
+
+    @Test
+    void fluxTest8concatWith() {
+
+        Flux<String> flux1 = Flux.just("A", "B", "C").delayElements(Duration.ofSeconds(1));
+        Flux<String> flux2 = Flux.just("X", "Y", "Z").delayElements(Duration.ofSeconds(1));
+
+        Flux<String> zippedFlux = Flux.concat(flux1, flux2).log();
+
+        StepVerifier.create(zippedFlux).expectNext("A", "B", "C", "X", "Y", "Z")
+                .verifyComplete();
+
+    }
+
+    @Test
+    void fluxErrorTest() {
+        Flux<String> flux = Flux.just("A", "B", "C").concatWith(Flux.error(new RuntimeException("Error occurred"))).log();
+
+        StepVerifier.create(flux)
+                .expectNext("A", "B", "C")
+                .consumeErrorWith(err -> assertThat(err.getMessage()).isEqualTo("Error occurred"))
+                .verify();
+    }
+
+    @Test
+    void fluxErrorTestOnErrorReturn() {
+        Flux<String> flux = Flux.just("A", "B", "C")
+                .concatWith(Flux.error(new RuntimeException("Error occurred")))
+                .onErrorReturn("Error Returned").log();
+
+        StepVerifier.create(flux)
+                .expectNext("A", "B", "C","Error Returned")
+                .verifyComplete();
+    }
+
+    @Test
+    void fluxErrorTestOnDoOnError() {
+        Flux<String> flux = Flux.just("A", "B", "C")
+                .concatWith(Flux.error(new RuntimeException("Error occurred")))
+                .doOnError(err -> System.out.println("Some error occurred")).log();
+
+        StepVerifier.create(flux)
+                .expectNext("A", "B", "C")
+                .expectError()
+                .verify();
+    }
+
+    @Test
+    void fluxErrorTestOnErrorResume() {
+        Flux<String> flux = Flux.just("A", "B", "C")
+                .concatWith(Flux.error(new RuntimeException("Error occurred")))
+                .onErrorResume(err -> Flux.just("On error resume")).log();
+
+        StepVerifier.create(flux)
+                .expectNext("A", "B", "C", "On error resume")
+                .verifyComplete();
+    }
+
+    @Test
+    void fluxErrorTestOnErrorMap() {
+        Flux<String> flux = Flux.just("A", "B", "C")
+                .concatWith(Flux.error(new RuntimeException("Error occurred")))
+                .onErrorMap(err -> err.getMessage().equals("Error occurred")? new CustomException("Translated exception"):err).log();
+
+        StepVerifier.create(flux)
+                .expectNext("A", "B", "C")
+                .consumeErrorWith(err -> assertThat(err).isInstanceOf(CustomException.class))
+                .verify();
+    }
 }
