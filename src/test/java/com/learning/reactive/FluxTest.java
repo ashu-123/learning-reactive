@@ -1,9 +1,11 @@
 package com.learning.reactive;
 
+import org.bson.io.BsonOutput;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.SignalType;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 import reactor.util.function.Tuple2;
@@ -214,7 +216,7 @@ public class FluxTest {
                 .onErrorReturn("Error Returned").log();
 
         StepVerifier.create(flux)
-                .expectNext("A", "B", "C","Error Returned")
+                .expectNext("A", "B", "C", "Error Returned")
                 .verifyComplete();
     }
 
@@ -245,11 +247,46 @@ public class FluxTest {
     void fluxErrorTestOnErrorMap() {
         Flux<String> flux = Flux.just("A", "B", "C")
                 .concatWith(Flux.error(new RuntimeException("Error occurred")))
-                .onErrorMap(err -> err.getMessage().equals("Error occurred")? new CustomException("Translated exception"):err).log();
+                .onErrorMap(err -> err.getMessage().equals("Error occurred") ? new CustomException("Translated exception") : err).log();
 
         StepVerifier.create(flux)
                 .expectNext("A", "B", "C")
                 .consumeErrorWith(err -> assertThat(err).isInstanceOf(CustomException.class))
                 .verify();
+    }
+
+    @Test
+    void fluxErrorTestOndoFinally() {
+        Flux<String> flux = Flux.just("A", "B", "C")
+                .concatWith(Flux.error(new RuntimeException("Error occurred")))
+                .onErrorMap(err -> err.getMessage().equals("Error occurred") ? new CustomException("Translated exception") : err)
+                .log().doFinally((x) -> {
+                    if (x == SignalType.ON_ERROR) {
+                        System.out.println("error occured");
+                    }
+                });
+
+        StepVerifier.create(flux)
+                .expectNext("A", "B", "C")
+                .consumeErrorWith(err -> assertThat(err).isInstanceOf(CustomException.class))
+                .verify();
+    }
+
+
+    @Test
+    void fluxErrorTestFinallyWithCancel() {
+        Flux<String> flux = Flux.just("A", "B", "C")
+                .doFinally((x) -> {
+                    if (x == SignalType.ON_ERROR) {
+                        System.out.println("error occured");
+                    } else if (x == SignalType.CANCEL) {
+                        System.out.println("cancelled");
+                    }
+                }).take(2).log();
+
+        StepVerifier.create(flux)
+                .expectNext("A", "B")
+
+                .verifyComplete();
     }
 }
