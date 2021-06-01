@@ -1,4 +1,4 @@
-package com.learning.reactive;
+package com.learning.reactive.exception;
 
 public class CustomException extends Throwable{
 
